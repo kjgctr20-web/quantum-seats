@@ -102,22 +102,23 @@ const ADMIN_PASSWORD = 'quantum2026'; // 원하는 비밀번호로 변경 가능
    독서실 구역 설정 (수정 불필요)
    ================================================ */
 const ROOM_SECTIONS = [
-  {room:'1관 B1층',   gender:'여', min:1,   max:138, label:'1관 B1층 (여)'},
-  {room:'1관 5층',    gender:'남', min:1,   max:156, label:'1관 5층 - 1호 (남)'},
-  {room:'1관 5층',    gender:'여', min:157, max:251, label:'1관 5층 - 2호 (여)'},
-  {room:'1관 6층',    gender:'남', min:1,   max:156, label:'1관 6층 - 1호 (남)'},
-  {room:'1관 6층',    gender:'여', min:157, max:251, label:'1관 6층 - 2호 (여)'},
-  {room:'2관 B1층',   gender:'남', min:1,   max:87,  label:'2관 B1층 (남)'},
-  {room:'2관 1층',    gender:'남', min:1,   max:62,  label:'2관 1층 (남)'},
-  {room:'2관 2층',    gender:'여', min:1,   max:74,  label:'2관 2층 (여)'},
-  {room:'2관 3층',    gender:'남', min:1,   max:56,  label:'2관 3층 (남)'},
-  {room:'3관(두원) 2층', gender:'남', min:1, max:96, label:'3관 2층 - 1·2호 (남)'},
-  {room:'3관(두원) 2층', gender:'여', min:97,max:130,label:'3관 2층 - 3호 (여)'},
-  {room:'3관(두원) 3층', gender:'여', min:1, max:99, label:'3관 3층 - 1호 (여)'},
-  {room:'3관(두원) 3층', gender:'남', min:100,max:220,label:'3관 3층 - 2호 (남)'},
-  {room:'3관(두원) 6층', gender:'여', min:1, max:70, label:'3관 6층 (여)'},
-  {room:'3관(두원) 7층', gender:'남', min:1, max:80, label:'3관 7층 (남)'},
-  {room:'4관송민 7층', gender:'남', min:1,  max:119, label:'4관 7층 (남)'},
+  {room:'1관 B1층',      gender:'여', min:1,   max:138, label:'1관 B1층 (여)'},
+  {room:'1관 5층',       gender:'남', min:1,   max:156, label:'1관 5층 - 1호 (남)'},
+  {room:'1관 5층',       gender:'여', min:157, max:251, label:'1관 5층 - 2호 (여)'},
+  {room:'1관 6층',       gender:'남', min:1,   max:156, label:'1관 6층 - 1호 (남)'},
+  {room:'1관 6층',       gender:'여', min:157, max:251, label:'1관 6층 - 2호 (여)'},
+  {room:'2관 B1층',      gender:'남', min:1,   max:87,  label:'2관 B1층 (남)'},
+  {room:'2관 1층',       gender:'남', min:1,   max:62,  label:'2관 1층 (남)'},
+  {room:'2관 2층',       gender:'여', min:1,   max:74,  label:'2관 2층 (여)'},
+  {room:'2관 3층',       gender:'남', min:1,   max:56,  label:'2관 3층 (남)'},
+  {room:'3관(두원) 2층', gender:'남', min:1,   max:96,  label:'3관 2층 - 1·2호 (남)'},
+  {room:'3관(두원) 2층', gender:'여', min:97,  max:130, label:'3관 2층 - 3호 (여)'},
+  {room:'3관(두원) 3층', gender:'여', min:1,   max:99,  label:'3관 3층 - 1호 (여)'},
+  {room:'3관(두원) 3층', gender:'남', min:100, max:205, label:'3관 3층 - 2호 (남)'},
+  {room:'3관(두원) 6층', gender:'여', min:1,   max:93,  label:'3관 6층 (여)'},
+  {room:'3관(두원) 7층', gender:'남', min:1,   max:67,  label:'3관 7층 (남)'},
+  {room:'4관(송민) 7층', gender:'남', min:1,   max:81,  label:'4관 7층 - 1호 (남)'},
+  {room:'4관(송민) 7층', gender:'여', min:82,  max:119, label:'4관 7층 - 2호 (여)'},
 ];
 
 /* ================================================
@@ -242,8 +243,8 @@ function subscribeRequests() {
 function parseExcel(buffer) {
   try {
     const wb = XLSX.read(buffer);
-    // 첫 번째 시트 사용
-    const sheetName = wb.SheetNames[0];
+    // master 시트 우선, 없으면 첫 번째 시트
+    const sheetName = wb.SheetNames.includes('master') ? 'master' : wb.SheetNames.includes('Master') ? 'Master' : wb.SheetNames[0];
     const ws = wb.Sheets[sheetName];
     if (!ws) return {students:[], error:'시트를 찾을 수 없습니다'};
     const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});

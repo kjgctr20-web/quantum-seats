@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>퀀텀관 좌석 관리 시스템</title>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --primary:#1e40af;--primary-h:#1d4ed8;
+  --bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--border-h:#cbd5e1;
+  --text:#0f172a;--muted:#64748b;--hint:#94a3b8;
+  --success:#15803d;--danger:#b91c1c;--warning:#b45309;
+  --navy:#0f172a;--navy-h:#1e293b;
+  --r:8px;--rl:12px;
+  --ff:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--ff);background:var(--bg);color:var(--text);min-height:100vh}
+a{color:inherit;text-decoration:none}
+input,textarea,select{font-family:var(--ff);background:var(--card);color:var(--text);
+  border:1px solid var(--border);border-radius:var(--r);padding:9px 13px;font-size:14px;
+  outline:none;width:100%;transition:border .15s}
+input:focus,textarea:focus{border-color:var(--primary)}
+button{font-family:var(--ff);cursor:pointer;border:none;border-radius:var(--r);
+  font-size:14px;font-weight:500;transition:all .15s;padding:9px 18px}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-h)}
+.btn-primary:disabled{background:#e2e8f0;color:var(--hint);cursor:not-allowed}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover{background:#166534}
+.btn-success:disabled{background:#e2e8f0;color:var(--hint);cursor:not-allowed}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#991b1b}
+.btn-ghost{background:var(--card);color:var(--muted);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg)}
+.btn-dark{background:var(--navy);color:#f8fafc}
+.btn-dark:hover{background:var(--navy-h)}
+.btn-dark:disabled{background:#e2e8f0;color:var(--hint);cursor:not-allowed}
+.btn-sm{padding:6px 14px;font-size:13px}
+.card{background:var(--card);border-radius:var(--rl);padding:22px 24px;
+  border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.badge{display:inline-block;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:500}
+.badge-pending{background:#fef3c7;color:#92400e}
+.badge-approved{background:#d1fae5;color:#065f46}
+.badge-rejected{background:#fee2e2;color:#991b1b}
+.tag-m{background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:4px;font-size:12px}
+.tag-f{background:#fce7f3;color:#9d174d;padding:1px 8px;border-radius:4px;font-size:12px}
+.tab-btn{padding:8px 16px;border:none;border-radius:var(--r);background:transparent;
+  color:var(--muted);font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap}
+.tab-btn.active{background:var(--primary);color:#fff}
+.header{background:var(--navy);padding:14px 24px;display:flex;align-items:center;gap:14px}
+.back-btn{background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:4px 8px;line-height:1}
+.progress-bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width .3s}
+.alert{padding:14px 18px;border-radius:var(--r);font-size:14px;margin-bottom:16px}
+.alert-warn{background:#fef3c7;border:1px solid #f59e0b;color:#92400e}
+.alert-err{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b}
+.alert-ok{background:#d1fae5;border:1px solid #86efac;color:#065f46}
+.loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--hint)}
+.spinner{width:28px;height:28px;border:3px solid #e2e8f0;border-top-color:var(--primary);
+  border-radius:50%;animation:spin .7s linear infinite;margin-right:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.seat-grid{display:flex;flex-wrap:wrap;gap:4px;max-height:260px;overflow-y:auto;
+  padding:8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)}
+.seat-btn{width:42px;height:36px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:all .1s}
+.seat-empty{background:#dcfce7;color:#15803d;border:1px solid #86efac}
+.seat-empty:hover{background:#bbf7d0}
+.seat-occupied{background:#f1f5f9;color:#cbd5e1;border:1px solid #e2e8f0;cursor:not-allowed}
+.seat-selected{background:var(--primary);color:#fff;border:1px solid var(--primary)}
+.req-card{background:var(--card);border-radius:var(--rl);padding:18px 22px;
+  border:1px solid var(--border);margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{padding:10px 16px;text-align:left;color:var(--muted);font-weight:500;font-size:12px;background:#f8fafc}
+td{padding:10px 16px;border-top:1px solid #f1f5f9}
+.empty-state{text-align:center;padding:52px;color:var(--hint);background:var(--card);
+  border:1px solid var(--border);border-radius:var(--rl)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ================================================
+   🔧 FIREBASE 설정 - 아래 6줄을 교체하세요
+   (Firebase 콘솔 → 프로젝트 설정 → 내 앱 → SDK 설정에서 복사)
+   ================================================ */
+const FIREBASE_CONFIG = {
+  apiKey:            "여기에_붙여넣기",
+  authDomain:        "여기에_붙여넣기",
+  projectId:         "여기에_붙여넣기",
+  storageBucket:     "여기에_붙여넣기",
+  messagingSenderId: "여기에_붙여넣기",
+  appId:             "여기에_붙여넣기"
+};
+
+/* ================================================
+   독서실 구역 설정 (수정 불필요)
+   ================================================ */
+const ROOM_SECTIONS = [
+  {room:'1관 B1층',   gender:'여', min:1,   max:138, label:'1관 B1층 (여)'},
+  {room:'1관 5층',    gender:'남', min:1,   max:156, label:'1관 5층 - 1호 (남)'},
+  {room:'1관 5층',    gender:'여', min:157, max:251, label:'1관 5층 - 2호 (여)'},
+  {room:'1관 6층',    gender:'남', min:1,   max:156, label:'1관 6층 - 1호 (남)'},
+  {room:'1관 6층',    gender:'여', min:157, max:251, label:'1관 6층 - 2호 (여)'},
+  {room:'2관 B1층',   gender:'남', min:1,   max:87,  label:'2관 B1층 (남)'},
+  {room:'2관 1층',    gender:'남', min:1,   max:62,  label:'2관 1층 (남)'},
+  {room:'2관 2층',    gender:'여', min:1,   max:74,  label:'2관 2층 (여)'},
+  {room:'2관 3층',    gender:'남', min:1,   max:56,  label:'2관 3층 (남)'},
+  {room:'3관(두원) 2층', gender:'남', min:1, max:96, label:'3관 2층 - 1·2호 (남)'},
+  {room:'3관(두원) 2층', gender:'여', min:97,max:130,label:'3관 2층 - 3호 (여)'},
+  {room:'3관(두원) 3층', gender:'여', min:1, max:99, label:'3관 3층 - 1호 (여)'},
+  {room:'3관(두원) 3층', gender:'남', min:100,max:220,label:'3관 3층 - 2호 (남)'},
+  {room:'3관(두원) 6층', gender:'여', min:1, max:70, label:'3관 6층 (여)'},
+  {room:'3관(두원) 7층', gender:'남', min:1, max:80, label:'3관 7층 (남)'},
+  {room:'4관송민 7층', gender:'남', min:1,  max:119, label:'4관 7층 (남)'},
+];
+
+/* ================================================
+   앱 초기화
+   ================================================ */
+firebase.initializeApp(FIREBASE_CONFIG);
+const db   = firebase.firestore();
+const auth = firebase.auth();
+
+/* ================================================
+   전역 상태
+   ================================================ */
+let S = {
+  page: 'landing',        // landing | student | admin
+  adminUser: null,
+  students: [],           // 캐시된 학생 목록 (관리자용)
+  studentsLoaded: false,
+  requests: [],           // 실시간 신청 목록
+  reqListener: null,      // Firestore 리스너 해제 함수
+  // 학생 페이지
+  searchQ: '',
+  foundStudent: null,
+  searchErr: '',
+  searchLoading: false,
+  showForm: false,
+  selSection: null,
+  selSeat: null,
+  reason: '',
+  submitLoading: false,
+  submitted: false,
+  myRequests: [],
+  // 관리자 페이지
+  adminTab: 'dashboard',
+  filterStatus: 'pending',
+  showRejectFor: null,
+  rejectTexts: {},
+  uploadMsg: '',
+  uploadErr: '',
+  uploadLoading: false,
+  actionLoading: {},
+  dashLoading: false,
+};
+
+/* ================================================
+   Firebase 작업
+   ================================================ */
+async function searchStudentFB(query) {
+  query = query.trim();
+  if (!query) return null;
+  // ID로 검색
+  const byId = await db.collection('students').doc(query).get();
+  if (byId.exists) return byId.data();
+  // 이름으로 검색
+  const byName = await db.collection('students').where('name','==',query).limit(1).get();
+  if (!byName.empty) return byName.docs[0].data();
+  return null;
+}
+
+async function loadStudentRequests(studentId) {
+  const snap = await db.collection('requests').where('studentId','==',studentId)
+    .orderBy('date','desc').limit(10).get();
+  return snap.docs.map(d => ({id:d.id,...d.data(), date: d.data().date?.toDate?.()?.toISOString() || d.data().date}));
+}
+
+async function submitRequestFB(req) {
+  await db.collection('requests').add({
+    ...req,
+    status: 'pending',
+    rejectReason: '',
+    date: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function approveRequestFB(reqId, req) {
+  const batch = db.batch();
+  batch.update(db.collection('requests').doc(reqId), {status:'approved'});
+  batch.update(db.collection('students').doc(req.studentId), {
+    room: req.desiredRoom,
+    seat: req.desiredSeat,
+  });
+  await batch.commit();
+}
+
+async function rejectRequestFB(reqId, reason) {
+  await db.collection('requests').doc(reqId).update({
+    status: 'rejected',
+    rejectReason: reason || '',
+  });
+}
+
+async function loadAllStudentsFB() {
+  const snap = await db.collection('students').get();
+  return snap.docs.map(d => d.data());
+}
+
+async function saveStudentsFB(students) {
+  const CHUNK = 400;
+  for (let i=0; i<students.length; i+=CHUNK) {
+    const batch = db.batch();
+    students.slice(i, i+CHUNK).forEach(s => {
+      batch.set(db.collection('students').doc(s.id), s);
+    });
+    await batch.commit();
+  }
+}
+
+function subscribeRequests() {
+  if (S.reqListener) S.reqListener();
+  S.reqListener = db.collection('requests').orderBy('date','desc')
+    .onSnapshot(snap => {
+      S.requests = snap.docs.map(d => ({
+        id: d.id, ...d.data(),
+        date: d.data().date?.toDate?.()?.toISOString() || d.data().date,
+      }));
+      render();
+    });
+}
+
+/* ================================================
+   Excel 파싱 / 다운로드
+   ================================================ */
+function parseExcel(buffer) {
+  try {
+    const wb = XLSX.read(buffer);
+    const ws = wb.Sheets['Master'];
+    if (!ws) return {students:[], error:'Master 시트를 찾을 수 없습니다'};
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+    const students = [];
+    for (let i=1; i<rows.length; i++) {
+      const r = rows[i];
+      if (!r || r[4]==null) continue;
+      const id   = String(r[3]??'').trim();
+      const name = String(r[4]??'').trim();
+      const gender = String(r[5]??'').trim();
+      const room   = String(r[6]??'').trim();
+      const seat   = parseInt(r[7]);
+      if (id && name && room && !isNaN(seat))
+        students.push({id, name, gender, room, seat});
+    }
+    return {students, error:null};
+  } catch(e) { return {students:[], error:e.message}; }
+}
+
+async function downloadUpdatedExcel(buffer) {
+  const approved = S.requests.filter(r => r.status==='approved');
+  const wb = XLSX.read(buffer);
+  const ws = wb.Sheets['Master'];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+  const today = new Date().toLocaleDateString('ko-KR');
+  approved.forEach(req => {
+    for (let i=1; i<rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      if (String(row[3]??'').trim() === req.studentId) {
+        ws[XLSX.utils.encode_cell({r:i,c:6})]  = {t:'s', v:req.desiredRoom};
+        ws[XLSX.utils.encode_cell({r:i,c:7})]  = {t:'n', v:req.desiredSeat};
+        ws[XLSX.utils.encode_cell({r:i,c:13})] = {t:'s', v:`${req.desiredRoom} ${req.desiredSeat}`};
+        ws[XLSX.utils.encode_cell({r:i,c:14})] = {t:'s', v:today};
+        break;
+      }
+    }
+  });
+  const out = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  const blob = new Blob([out], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `퀀텀관_마스터_업데이트_${today.replace(/\. /g,'-').replace('.','')}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ================================================
+   좌석 계산
+   ================================================ */
+function getOccupied(room, min, max) {
+  const s = new Set();
+  S.students.filter(st => st.room===room && st.seat>=min && st.seat<=max).forEach(st => s.add(st.seat));
+  S.requests.filter(r => r.desiredRoom===room && r.desiredSeat>=min && r.desiredSeat<=max
+    && (r.status==='pending'||r.status==='approved')).forEach(r => s.add(r.desiredSeat));
+  return s;
+}
+
+function getRoomStats() {
+  return ROOM_SECTIONS.map(sec => {
+    const total = sec.max-sec.min+1;
+    const occ   = S.students.filter(s => s.room===sec.room && s.seat>=sec.min && s.seat<=sec.max).length;
+    const pend  = S.requests.filter(r => r.desiredRoom===sec.room && r.desiredSeat>=sec.min && r.desiredSeat<=sec.max && r.status==='pending').length;
+    return {...sec, total, occupied:occ, available:total-occ, pending:pend};
+  });
+}
+
+/* ================================================
+   렌더링
+   ================================================ */
+function render() {
+  const app = document.getElementById('app');
+  if      (S.page==='landing') app.innerHTML = renderLanding();
+  else if (S.page==='student') app.innerHTML = renderStudent();
+  else if (S.page==='admin')   app.innerHTML = renderAdmin();
+  bindEvents();
+}
+
+/* --- Landing --- */
+function renderLanding() {
+  return `
+  <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;gap:48px">
+    <div style="text-align:center">
+      <div style="font-size:12px;letter-spacing:.2em;color:var(--muted);margin-bottom:10px;text-transform:uppercase;font-weight:500">강대 퀀텀관</div>
+      <h1 style="font-size:30px;font-weight:700;margin-bottom:8px;letter-spacing:-.02em">독서실 좌석 관리 시스템</h1>
+      <p style="color:var(--muted);font-size:15px">좌석 배정 현황 확인 및 변경 신청</p>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+      <button data-action="goto-student" class="btn-primary"
+        style="padding:28px 40px;border-radius:var(--rl);min-width:180px;text-align:center;
+               display:flex;flex-direction:column;align-items:center;gap:10px;font-size:16px">
+        <span style="font-size:32px;line-height:1">🎓</span>
+        <span style="font-size:18px;font-weight:700">학생</span>
+        <span style="font-size:12px;opacity:.85">좌석 변경 신청</span>
+      </button>
+      <button data-action="goto-admin" class="btn-dark"
+        style="padding:28px 40px;border-radius:var(--rl);min-width:180px;text-align:center;
+               display:flex;flex-direction:column;align-items:center;gap:10px">
+        <span style="font-size:32px;line-height:1">⚙️</span>
+        <span style="font-size:18px;font-weight:700">관리자</span>
+        <span style="font-size:12px;opacity:.75">신청 승인 및 현황 관리</span>
+      </button>
+    </div>
+  </div>`;
+}
+
+/* --- Student Page --- */
+function renderStudent() {
+  const s = S.foundStudent;
+  const myPending = s ? S.myRequests.find(r=>r.studentId===s.id&&r.status==='pending') : null;
+  const sections  = s ? ROOM_SECTIONS.filter(sec=>sec.gender===s.gender) : [];
+
+  let seatGridHtml = '';
+  if (S.showForm && S.selSection) {
+    const sec = S.selSection;
+    const occ = getOccupied(sec.room, sec.min, sec.max);
+    const allSeats = Array.from({length:sec.max-sec.min+1},(_,i)=>sec.min+i);
+    const avail = allSeats.filter(n=>!occ.has(n));
+    const cells = allSeats.map(n => {
+      const isAvail = !occ.has(n);
+      const isSel   = n===S.selSeat;
+      let cls = isSel?'seat-selected':isAvail?'seat-empty':'seat-occupied';
+      return `<button class="seat-btn ${cls}" data-action="${isAvail?'sel-seat':''}" data-seat="${n}" ${!isAvail?'disabled':''}>${n}</button>`;
+    }).join('');
+    seatGridHtml = `
+    <div style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:500;color:var(--muted);margin-bottom:8px">
+        좌석 선택 <span style="color:var(--hint);font-weight:400">— 빈 자리 ${avail.length}석 / 전체 ${allSeats.length}석</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)">
+          <span style="width:14px;height:14px;background:#dcfce7;border:1px solid #86efac;border-radius:3px;display:inline-block"></span>빈 자리</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)">
+          <span style="width:14px;height:14px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;display:inline-block"></span>배정됨</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)">
+          <span style="width:14px;height:14px;background:var(--primary);border-radius:3px;display:inline-block"></span>선택</span>
+      </div>
+      <div class="seat-grid">${cells}</div>
+    </div>`;
+  }
+
+  const roomBtns = sections.map(sec => {
+    const active = S.selSection && S.selSection.label===sec.label;
+    return `<button data-action="sel-section" data-idx="${ROOM_SECTIONS.indexOf(sec)}"
+      style="padding:7px 14px;border-radius:var(--r);
+             border:1px solid ${active?'var(--primary)':'var(--border)'};
+             background:${active?'#dbeafe':'var(--bg)'};
+             color:${active?'var(--primary)':'var(--muted)'};
+             font-size:13px;font-weight:500;cursor:pointer;font-family:var(--ff);white-space:nowrap">${sec.label}</button>`;
+  }).join('');
+
+  const histHtml = S.myRequests.length ? `
+  <div class="card" style="margin-top:16px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:16px">신청 내역</div>
+    ${S.myRequests.map(r=>`
+    <div style="padding:14px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span class="badge badge-${r.status}">${r.status==='pending'?'검토 중':r.status==='approved'?'승인':'반려'}</span>
+        <span style="font-size:12px;color:var(--hint)">${r.date?new Date(r.date).toLocaleDateString('ko-KR'):''}</span>
+      </div>
+      <div style="font-size:14px;margin-bottom:4px">
+        <span style="color:var(--muted)">${r.currentRoom} ${r.currentSeat}번</span>
+        <span style="margin:0 8px;color:var(--primary);font-weight:700">→</span>
+        <span style="font-weight:600">${r.desiredRoom} ${r.desiredSeat}번</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted)">사유: ${r.reason}</div>
+      ${r.status==='rejected'&&r.rejectReason?`<div style="margin-top:6px;font-size:12px;color:var(--danger);background:#fee2e2;padding:6px 10px;border-radius:4px">반려 사유: ${r.rejectReason}</div>`:''}
+    </div>`).join('')}
+  </div>` : '';
+
+  return `
+  <div style="min-height:100vh">
+    <div class="header">
+      <button data-action="goto-landing" class="back-btn">←</button>
+      <div>
+        <div style="font-weight:700;font-size:17px;color:#f8fafc">학생 포털</div>
+        <div style="font-size:12px;color:#475569">좌석 변경 신청</div>
+      </div>
+    </div>
+    <div style="padding:28px 24px;max-width:860px;margin:0 auto">
+
+      <!-- 검색 -->
+      <div class="card" style="margin-bottom:20px">
+        <div style="font-size:17px;font-weight:700;margin-bottom:16px">학생 검색</div>
+        <div style="display:flex;gap:10px">
+          <input id="search-input" placeholder="학번 또는 이름 입력" value="${S.searchQ}" />
+          <button data-action="do-search" class="btn-primary" style="white-space:nowrap;min-width:64px">
+            ${S.searchLoading?'<div class="spinner" style="width:16px;height:16px;margin:0"></div>':'검색'}
+          </button>
+        </div>
+        ${S.searchErr?`<p style="color:var(--danger);font-size:13px;margin-top:8px">${S.searchErr}</p>`:''}
+      </div>
+
+      <!-- 학생 정보 -->
+      ${s?`
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+              <span style="font-size:20px;font-weight:700">${s.name}</span>
+              <span class="${s.gender==='여'?'tag-f':'tag-m'}">${s.gender}</span>
+            </div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:18px">학번: ${s.id}</div>
+            <div style="display:flex;gap:28px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:12px;color:var(--hint);margin-bottom:4px">현재 배정 독서실</div>
+                <div style="font-size:16px;font-weight:600;color:var(--primary)">${s.room}</div>
+              </div>
+              <div>
+                <div style="font-size:12px;color:var(--hint);margin-bottom:4px">좌석 번호</div>
+                <div style="font-size:30px;font-weight:800;line-height:1">${s.seat}</div>
+              </div>
+            </div>
+          </div>
+          <div>
+            ${myPending
+              ?`<div class="alert alert-warn" style="margin:0">⏳ 검토 중인 신청이 있습니다</div>`
+              :S.submitted
+              ?`<div class="alert alert-ok" style="margin:0">✓ 신청이 접수되었습니다</div>`
+              :`<button data-action="toggle-form" class="${S.showForm?'btn-ghost':'btn-primary'}">
+                  ${S.showForm?'취소':'+ 자리 변경 신청'}
+                </button>`}
+          </div>
+        </div>
+
+        ${S.showForm?`
+        <div style="margin-top:22px;padding-top:22px;border-top:1px solid var(--border)">
+          <div style="font-size:15px;font-weight:600;margin-bottom:16px">좌석 변경 신청</div>
+          <div style="margin-bottom:18px">
+            <div style="font-size:13px;font-weight:500;color:var(--muted);margin-bottom:8px">
+              희망 독서실 선택 (${s.gender}학생 가능 구역)
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">${roomBtns}</div>
+          </div>
+          ${S.selSection?seatGridHtml:''}
+          ${S.selSeat?`
+          <div style="margin-bottom:16px">
+            <div style="font-size:13px;font-weight:500;color:var(--muted);margin-bottom:6px">
+              변경 사유 <span style="color:var(--danger)">*</span>
+            </div>
+            <textarea id="req-reason" rows="3" placeholder="좌석 변경을 원하는 이유를 입력해주세요"
+              style="resize:vertical">${S.reason}</textarea>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--r);padding:12px 16px;margin-bottom:14px;
+                      font-size:13px;color:var(--muted);border:1px solid var(--border)">
+            <strong style="color:var(--text)">신청 내용:</strong>
+            ${S.selSection.room} <strong>${S.selSeat}번</strong> 자리로 변경
+          </div>
+          <button data-action="submit-req" class="btn-success" ${!S.reason.trim()||S.submitLoading?'disabled':''}>
+            ${S.submitLoading?'처리 중...':'신청 제출'}
+          </button>`:''}
+        </div>`:''}
+      </div>`:``}
+
+      ${histHtml}
+    </div>
+  </div>`;
+}
+
+/* --- Admin Page --- */
+function renderAdmin() {
+  // 로그인 전
+  if (!S.adminUser) return `
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)">
+    <div class="card" style="width:340px">
+      <button data-action="goto-landing" style="background:none;border:none;color:var(--hint);cursor:pointer;font-size:13px;margin-bottom:22px;padding:0;font-family:var(--ff)">← 뒤로</button>
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px">관리자 로그인</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:22px">Firebase 계정으로 로그인하세요</div>
+      <input type="email" id="admin-email" placeholder="이메일" style="margin-bottom:10px"/>
+      <input type="password" id="admin-pw" placeholder="비밀번호" style="margin-bottom:8px"/>
+      <div id="login-err" style="color:var(--danger);font-size:12px;margin-bottom:8px;min-height:16px"></div>
+      <button data-action="do-login" class="btn-primary" style="width:100%">로그인</button>
+    </div>
+  </div>`;
+
+  const pending = S.requests.filter(r=>r.status==='pending').length;
+  const tabs = [['dashboard','📊 현황'],['requests',`📋 신청 관리${pending>0?` (${pending})`:''}`],['files','📁 파일 관리']];
+  let content = '';
+  if      (S.adminTab==='dashboard') content = renderDashboard();
+  else if (S.adminTab==='requests')  content = renderRequests();
+  else                                content = renderFiles();
+
+  return `
+  <div style="min-height:100vh">
+    <div class="header" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button data-action="goto-landing" class="back-btn">←</button>
+        <div>
+          <div style="font-weight:700;font-size:17px;color:#f8fafc">관리자 콘솔</div>
+          <div style="font-size:12px;color:#475569">강대 퀀텀관 좌석 관리 시스템</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        ${pending>0?`<div style="background:#ef4444;color:#fff;border-radius:20px;padding:4px 14px;font-size:13px;font-weight:600">대기 ${pending}건</div>`:''}
+        <button data-action="do-logout" style="background:none;border:1px solid #334155;color:#94a3b8;border-radius:var(--r);padding:6px 14px;cursor:pointer;font-size:13px;font-family:var(--ff)">로그아웃</button>
+      </div>
+    </div>
+    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 24px;display:flex;gap:4px;overflow-x:auto">
+      ${tabs.map(([t,l])=>`<button data-action="set-tab" data-tab="${t}" class="tab-btn${S.adminTab===t?' active':''}">${l}</button>`).join('')}
+    </div>
+    <div style="padding:28px 24px;max-width:1100px;margin:0 auto">${content}</div>
+  </div>`;
+}
+
+function renderDashboard() {
+  if (S.dashLoading) return `<div class="loading"><div class="spinner"></div>학생 데이터 로딩 중...</div>`;
+  const stats   = getRoomStats();
+  const pending = S.requests.filter(r=>r.status==='pending').length;
+  const approved= S.requests.filter(r=>r.status==='approved').length;
+  const rejected= S.requests.filter(r=>r.status==='rejected').length;
+  return `
+  <div style="font-size:20px;font-weight:700;margin-bottom:22px">좌석 현황</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px">
+    ${[
+      {label:'전체 학생', val:S.students.length, color:'var(--primary)'},
+      {label:'대기 신청',  val:pending,           color:'var(--warning)'},
+      {label:'승인됨',    val:approved,          color:'var(--success)'},
+      {label:'반려됨',    val:rejected,          color:'var(--danger)'},
+    ].map(c=>`
+    <div style="background:var(--card);border-radius:var(--rl);padding:18px 20px;
+                border:1px solid var(--border);border-left:3px solid ${c.color}">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${c.label}</div>
+      <div style="font-size:26px;font-weight:800;color:${c.color}">${c.val}</div>
+    </div>`).join('')}
+  </div>
+  <div style="background:var(--card);border-radius:var(--rl);border:1px solid var(--border);overflow:hidden">
+    <div style="padding:16px 22px;border-bottom:1px solid var(--border);font-size:15px;font-weight:700">독서실별 현황</div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>${['독서실','성별','총 좌석','배정','빈 자리','대기 신청','점유율'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${stats.map(s=>{
+            const rate=Math.round((s.occupied/s.total)*100);
+            const barC=rate>90?'#b91c1c':rate>70?'#d97706':'var(--primary)';
+            return `<tr>
+              <td style="font-weight:500">${s.label}</td>
+              <td><span class="${s.gender==='여'?'tag-f':'tag-m'}">${s.gender}</span></td>
+              <td style="color:var(--muted)">${s.total}</td>
+              <td>${s.occupied}</td>
+              <td style="font-weight:600;color:var(--success)">${s.available}</td>
+              <td style="color:${s.pending>0?'var(--warning)':'var(--hint)'}">${s.pending>0?s.pending+'건':'-'}</td>
+              <td style="min-width:110px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${rate}%;background:${barC}"></div></div>
+                  <span style="font-size:12px;color:var(--muted);min-width:32px">${rate}%</span>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderRequests() {
+  const filters = [['pending','대기'],['approved','승인'],['rejected','반려']];
+  const filtered = S.requests.filter(r=>r.status===S.filterStatus);
+  const empty = {pending:'대기 중인 신청이 없습니다.',approved:'승인된 신청이 없습니다.',rejected:'반려된 신청이 없습니다.'};
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:12px">
+    <div style="font-size:20px;font-weight:700">신청 관리</div>
+    <div style="display:flex;gap:8px">
+      ${filters.map(([st,l])=>`
+      <button data-action="set-filter" data-filter="${st}"
+        style="padding:7px 16px;border-radius:var(--r);border:1px solid var(--border);
+               background:${S.filterStatus===st?'var(--navy)':'var(--card)'};
+               color:${S.filterStatus===st?'#f8fafc':'var(--muted)'};
+               font-size:13px;cursor:pointer;font-family:var(--ff)">
+        ${l} (${S.requests.filter(r=>r.status===st).length})
+      </button>`).join('')}
+    </div>
+  </div>
+  ${filtered.length===0
+    ?`<div class="empty-state">${empty[S.filterStatus]}</div>`
+    :filtered.map(req=>{
+      const loading = S.actionLoading[req.id];
+      return `
+      <div class="req-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div style="flex:1;min-width:220px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+              <span style="font-size:17px;font-weight:700">${req.studentName}</span>
+              <span style="font-size:13px;color:var(--muted)">학번 ${req.studentId}</span>
+              <span class="${req.gender==='여'?'tag-f':'tag-m'}">${req.gender}</span>
+              <span class="badge badge-${req.status}">${req.status==='pending'?'검토 중':req.status==='approved'?'승인':'반려'}</span>
+            </div>
+            <div style="font-size:15px;margin-bottom:5px">
+              <span style="color:var(--muted)">${req.currentRoom} ${req.currentSeat}번</span>
+              <span style="margin:0 10px;color:var(--primary);font-weight:700">→</span>
+              <span style="font-weight:700">${req.desiredRoom} ${req.desiredSeat}번</span>
+            </div>
+            <div style="font-size:13px;color:var(--muted)">사유: ${req.reason}</div>
+            <div style="font-size:12px;color:var(--hint);margin-top:3px">
+              ${req.date?new Date(req.date).toLocaleString('ko-KR'):''}
+            </div>
+            ${req.status==='rejected'&&req.rejectReason
+              ?`<div style="margin-top:8px;font-size:12px;color:var(--danger);background:#fee2e2;padding:6px 10px;border-radius:4px">반려 사유: ${req.rejectReason}</div>`:''}
+          </div>
+          ${req.status==='pending'?`
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:140px">
+            <button data-action="approve" data-id="${req.id}" class="btn-success btn-sm" ${loading?'disabled':''}>
+              ${loading?'처리 중...':'✓ 승인'}
+            </button>
+            ${S.showRejectFor===req.id?`
+            <input id="rr-${req.id}" placeholder="반려 사유 (선택)" value="${S.rejectTexts[req.id]||''}"
+              style="font-size:13px;padding:7px 10px" />
+            <button data-action="confirm-reject" data-id="${req.id}" class="btn-danger btn-sm" ${loading?'disabled':''}>
+              ${loading?'처리 중...':'반려 확정'}
+            </button>`:
+            `<button data-action="show-reject" data-id="${req.id}"
+              style="background:var(--card);color:var(--danger);border:1px solid #fca5a5;
+                     border-radius:var(--r);padding:7px 14px;cursor:pointer;font-size:13px;font-family:var(--ff)">
+              ✕ 반려
+            </button>`}
+          </div>`:''}
+        </div>
+      </div>`;}).join('')}`;
+}
+
+function renderFiles() {
+  const approvedN = S.requests.filter(r=>r.status==='approved').length;
+  return `
+  <div style="font-size:20px;font-weight:700;margin-bottom:22px">파일 관리</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px">
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px">📤 마스터 파일 업로드</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.7">
+        Master 시트가 포함된 퀀텀관 좌석 배정 엑셀 파일을 업로드하면<br/>
+        학생 데이터가 Firebase에 저장됩니다.
+      </div>
+      <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none"/>
+      <button data-action="trigger-upload" class="btn-primary" style="width:100%;margin-bottom:12px"
+        ${S.uploadLoading?'disabled':''}>
+        ${S.uploadLoading?'업로드 중...':'파일 선택'}
+      </button>
+      ${S.uploadErr?`<div class="alert alert-err" style="margin-top:8px">${S.uploadErr}</div>`:''}
+      ${S.uploadMsg?`<div class="alert alert-ok" style="margin-top:8px">${S.uploadMsg}</div>`:''}
+      ${S.students.length>0?`
+      <div style="margin-top:12px;background:#f0fdf4;border-radius:var(--r);padding:10px 14px;
+                  font-size:13px;color:#166534;border:1px solid #86efac">
+        현재 로드된 학생: <strong>${S.students.length}명</strong>
+      </div>`:''}
+    </div>
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px">📥 업데이트된 파일 다운로드</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.7">
+        원본 엑셀 파일을 업로드하면 승인된 좌석 변경 내역을 반영하여 다운로드합니다.
+      </div>
+      <div style="background:var(--bg);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;border:1px solid var(--border)">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:3px">
+          반영될 승인 건수: <strong style="color:var(--success)">${approvedN}건</strong>
+        </div>
+        <div style="font-size:12px;color:var(--hint)">* 승인된 모든 변경 사항이 반영됩니다</div>
+      </div>
+      <input type="file" id="dl-input" accept=".xlsx,.xls" style="display:none"/>
+      <button data-action="trigger-download" class="btn-dark" style="width:100%">원본 업로드 후 다운로드</button>
+    </div>
+  </div>`;
+}
+
+/* ================================================
+   이벤트 바인딩
+   ================================================ */
+function bindEvents() {
+  document.querySelectorAll('[data-action]').forEach(el => {
+    el.addEventListener('click', handleClick);
+  });
+  const si = document.getElementById('search-input');
+  if (si) si.addEventListener('keydown', e=>{ if(e.key==='Enter'){S.searchQ=si.value;doSearch();} });
+  const ri = document.getElementById('req-reason');
+  if (ri) ri.addEventListener('input', e=>{ S.reason=e.target.value; });
+  const fi = document.getElementById('file-input');
+  if (fi) fi.addEventListener('change', handleUpload);
+  const di = document.getElementById('dl-input');
+  if (di) di.addEventListener('change', handleDownloadUpload);
+  const ae = document.getElementById('admin-email');
+  if (ae) ae.addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('admin-pw')?.focus(); });
+  const ap = document.getElementById('admin-pw');
+  if (ap) ap.addEventListener('keydown', e=>{ if(e.key==='Enter') doAdminLogin(); });
+  // 반려 사유 input
+  document.querySelectorAll('[id^="rr-"]').forEach(el => {
+    const id = el.id.replace('rr-','');
+    el.addEventListener('input', e=>{ S.rejectTexts[id]=e.target.value; });
+  });
+}
+
+async function handleClick(e) {
+  const btn = e.currentTarget;
+  const action = btn.dataset.action;
+  if (!action) return;
+
+  if (action==='goto-student') {
+    S.page='student'; S.searchQ=''; S.foundStudent=null; S.searchErr='';
+    S.showForm=false; S.selSection=null; S.selSeat=null; S.reason='';
+    S.submitted=false; S.myRequests=[];
+    render();
+  }
+  else if (action==='goto-admin') {
+    S.page='admin';
+    if (S.adminUser) subscribeRequests();
+    render();
+  }
+  else if (action==='goto-landing') {
+    S.page='landing';
+    if (S.reqListener) { S.reqListener(); S.reqListener=null; }
+    render();
+  }
+  else if (action==='do-search') {
+    const si=document.getElementById('search-input');
+    if(si) S.searchQ=si.value;
+    doSearch();
+  }
+  else if (action==='toggle-form') {
+    S.showForm=!S.showForm; S.selSection=null; S.selSeat=null; S.reason='';
+    render();
+  }
+  else if (action==='sel-section') {
+    S.selSection=ROOM_SECTIONS[parseInt(btn.dataset.idx)];
+    S.selSeat=null;
+    render();
+  }
+  else if (action==='sel-seat') {
+    S.selSeat=parseInt(btn.dataset.seat);
+    render();
+  }
+  else if (action==='submit-req') {
+    const ri=document.getElementById('req-reason');
+    if(ri) S.reason=ri.value;
+    doSubmit();
+  }
+  else if (action==='do-login') {
+    doAdminLogin();
+  }
+  else if (action==='do-logout') {
+    await auth.signOut();
+    S.adminUser=null;
+    if (S.reqListener){S.reqListener();S.reqListener=null;}
+    render();
+  }
+  else if (action==='set-tab') {
+    S.adminTab=btn.dataset.tab;
+    if (S.adminTab==='dashboard' && !S.studentsLoaded) loadDashboard();
+    S.showRejectFor=null;
+    render();
+  }
+  else if (action==='set-filter') {
+    S.filterStatus=btn.dataset.filter; S.showRejectFor=null; render();
+  }
+  else if (action==='approve') {
+    const id=btn.dataset.id;
+    const req=S.requests.find(r=>r.id===id);
+    if (!req) return;
+    S.actionLoading[id]=true; render();
+    try { await approveRequestFB(id, req); }
+    catch(e){ alert('오류: '+e.message); }
+    finally { S.actionLoading[id]=false; }
+  }
+  else if (action==='show-reject') {
+    S.showRejectFor=btn.dataset.id; render();
+  }
+  else if (action==='confirm-reject') {
+    const id=btn.dataset.id;
+    const ri=document.getElementById(`rr-${id}`);
+    if(ri) S.rejectTexts[id]=ri.value;
+    S.actionLoading[id]=true; render();
+    try { await rejectRequestFB(id, S.rejectTexts[id]||''); S.showRejectFor=null; }
+    catch(e){ alert('오류: '+e.message); }
+    finally { S.actionLoading[id]=false; }
+  }
+  else if (action==='trigger-upload') {
+    document.getElementById('file-input').click();
+  }
+  else if (action==='trigger-download') {
+    document.getElementById('dl-input').click();
+  }
+}
+
+async function doSearch() {
+  const q = S.searchQ.trim();
+  if (!q) return;
+  S.searchLoading=true; S.searchErr=''; S.foundStudent=null; S.myRequests=[];
+  render();
+  try {
+    const found = await searchStudentFB(q);
+    if (found) {
+      S.foundStudent=found;
+      S.myRequests=await loadStudentRequests(found.id);
+      S.showForm=false; S.submitted=false;
+    } else {
+      S.searchErr='학생을 찾을 수 없습니다. 학번 또는 이름을 확인해주세요.';
+    }
+  } catch(e) { S.searchErr='검색 중 오류가 발생했습니다: '+e.message; }
+  finally { S.searchLoading=false; render(); }
+}
+
+async function doSubmit() {
+  const s=S.foundStudent;
+  if (!s||!S.selSection||!S.selSeat||!S.reason.trim()) return;
+  const hasPending = S.myRequests.some(r=>r.studentId===s.id&&r.status==='pending');
+  if (hasPending) return;
+  S.submitLoading=true; render();
+  try {
+    await submitRequestFB({
+      studentId:s.id, studentName:s.name, gender:s.gender,
+      currentRoom:s.room, currentSeat:s.seat,
+      desiredRoom:S.selSection.room, desiredSeat:S.selSeat,
+      reason:S.reason.trim(),
+    });
+    S.submitted=true; S.showForm=false;
+    S.myRequests=await loadStudentRequests(s.id);
+  } catch(e){ alert('신청 중 오류: '+e.message); }
+  finally { S.submitLoading=false; render(); }
+}
+
+async function doAdminLogin() {
+  const email=document.getElementById('admin-email')?.value||'';
+  const pw=document.getElementById('admin-pw')?.value||'';
+  const errEl=document.getElementById('login-err');
+  if(errEl) errEl.textContent='로그인 중...';
+  try {
+    await auth.signInWithEmailAndPassword(email, pw);
+  } catch(e){
+    if(errEl) errEl.textContent='이메일 또는 비밀번호가 올바르지 않습니다.';
+  }
+}
+
+async function loadDashboard() {
+  S.dashLoading=true; render();
+  try {
+    S.students=await loadAllStudentsFB();
+    S.studentsLoaded=true;
+  } catch(e){ console.error(e); }
+  finally { S.dashLoading=false; render(); }
+}
+
+async function handleUpload(e) {
+  const file=e.target.files[0];
+  if (!file) return;
+  S.uploadLoading=true; S.uploadErr=''; S.uploadMsg=''; render();
+  const reader=new FileReader();
+  reader.onload=async evt=>{
+    const {students, error}=parseExcel(evt.target.result);
+    if (error){ S.uploadErr=error; S.uploadLoading=false; render(); return; }
+    if (!students.length){ S.uploadErr='학생 데이터를 찾을 수 없습니다.'; S.uploadLoading=false; render(); return; }
+    try {
+      await saveStudentsFB(students);
+      S.students=students; S.studentsLoaded=true;
+      S.uploadMsg=`✅ ${students.length}명 저장 완료 (Firebase 업데이트됨)`;
+    } catch(e){ S.uploadErr='Firebase 저장 오류: '+e.message; }
+    finally { S.uploadLoading=false; render(); }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value='';
+}
+
+async function handleDownloadUpload(e) {
+  const file=e.target.files[0];
+  if (!file) return;
+  const reader=new FileReader();
+  reader.onload=async evt=>{
+    try { await downloadUpdatedExcel(evt.target.result); }
+    catch(e){ alert('다운로드 오류: '+e.message); }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value='';
+}
+
+/* ================================================
+   Auth 상태 감지 → 초기화
+   ================================================ */
+auth.onAuthStateChanged(user => {
+  S.adminUser = user;
+  if (user && S.page==='admin') {
+    subscribeRequests();
+    if (!S.studentsLoaded) loadDashboard();
+  }
+  render();
+});
+</script>
+</body>
+</html>

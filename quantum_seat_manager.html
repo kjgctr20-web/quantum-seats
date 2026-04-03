@@ -1250,7 +1250,14 @@ async function handleClick(e) {
     const req=S.requests.find(r=>r.id===id);
     if (!req) return;
     S.actionLoading[id]=true; render();
-    try { await approveRequestFB(id, req); }
+    try {
+      await approveRequestFB(id, req);
+      // 로컬 학생 캐시를 즉시 반영 (Firestore 재조회 없이)
+      const idx = S.students.findIndex(st => st.id === req.studentId);
+      if (idx >= 0) {
+        S.students[idx] = {...S.students[idx], room: req.desiredRoom, seat: req.desiredSeat};
+      }
+    }
     catch(e){ alert('오류: '+e.message); }
     finally { S.actionLoading[id]=false; }
   }

@@ -406,6 +406,7 @@ let S = {
   myRequests: [],
   // 관리자 페이지
   adminTab: 'dashboard',
+  adminSeatMapSec: 0,
   filterStatus: 'pending',
   showRejectFor: null,
   rejectTexts: {},
@@ -839,10 +840,11 @@ function renderAdmin() {
   </div>`;
 
   const pending = S.requests.filter(r=>r.status==='pending').length;
-  const tabs = [['dashboard','📊 현황'],['requests',`📋 신청 관리${pending>0?` (${pending})`:''}`],['files','📁 파일 관리']];
+  const tabs = [['dashboard','📊 현황'],['requests',`📋 신청 관리${pending>0?` (${pending})`:''}`],['seatmap','🗺️ 자리표'],['files','📁 파일 관리']];
   let content = '';
   if      (S.adminTab==='dashboard') content = renderDashboard();
   else if (S.adminTab==='requests')  content = renderRequests();
+  else if (S.adminTab==='seatmap')   content = renderSeatMap();
   else                                content = renderFiles();
 
   return `
@@ -864,6 +866,128 @@ function renderAdmin() {
       ${tabs.map(([t,l])=>`<button data-action="set-tab" data-tab="${t}" class="tab-btn${S.adminTab===t?' active':''}">${l}</button>`).join('')}
     </div>
     <div style="padding:28px 24px;max-width:1100px;margin:0 auto">${content}</div>
+  </div>`;
+}
+
+function renderSeatMap() {
+  if (S.dashLoading) return `<div class="loading"><div class="spinner"></div>학생 데이터 로딩 중...</div>`;
+  if (!S.studentsLoaded) return `<div class="loading"><div class="spinner"></div>데이터를 불러오는 중...</div>`;
+
+  const secIdx = S.adminSeatMapSec;
+  const sec = ROOM_SECTIONS[secIdx];
+
+  /* 점유 현황 계산 */
+  function getOccupiedAdmin(room, min, max) {
+    const s = new Set();
+    S.students.filter(st => st.room===room && st.seat>=min && st.seat<=max).forEach(st => s.add(st.seat));
+    S.requests.filter(r => r.desiredRoom===room && r.desiredSeat>=min && r.desiredSeat<=max
+      && (r.status==='pending'||r.status==='approved')).forEach(r => s.add(r.desiredSeat));
+    return s;
+  }
+  function getPendingAdmin(room, min, max) {
+    const s = new Set();
+    S.requests.filter(r => r.desiredRoom===room && r.desiredSeat>=min && r.desiredSeat<=max && r.status==='pending').forEach(r => s.add(r.desiredSeat));
+    return s;
+  }
+
+  const occ = getOccupiedAdmin(sec.room, sec.min, sec.max);
+  const pend = getPendingAdmin(sec.room, sec.min, sec.max);
+  const allSeats = Array.from({length:sec.max-sec.min+1},(_,i)=>sec.min+i);
+  const occupiedCount = S.students.filter(st=>st.room===sec.room&&st.seat>=sec.min&&st.seat<=sec.max).length;
+  const pendingCount = pend.size;
+  const availCount = allSeats.length - occupiedCount;
+
+  /* 좌석 버튼 렌더 (읽기전용) */
+  function adminSeatBtn(n) {
+    if (n === null) return `<div style="width:36px;height:32px;flex-shrink:0;pointer-events:none"></div>`;
+    if (n === 'ent') return `<div style="width:36px;height:32px;border-radius:5px;background:#fef3c7;border:1px solid #f59e0b;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;pointer-events:none">🚪</div>`;
+    if (pend.has(n)) return `<div style="width:36px;height:32px;border-radius:5px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="신청 대기">${n}</div>`;
+    if (occ.has(n))  return `<div style="width:36px;height:32px;border-radius:5px;background:#f0f0f0;color:#bbb;border:1px solid #e0e0e0;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${n}</div>`;
+    return `<div style="width:36px;height:32px;border-radius:5px;background:#dcfce7;color:#15803d;border:1px solid #86efac;font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0">${n}</div>`;
+  }
+
+  /* 배치도 렌더 */
+  const plan = getFloorPlan(sec.room, sec.gender);
+  let gridHTML = '';
+  if (plan) {
+    gridHTML = plan.map(item => {
+      if (item.entrance) return `<div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;padding:6px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;font-weight:600;color:#92400e">${item.entrance}</div>`;
+      if (item.label)    return `<div style="font-size:11px;font-weight:600;color:var(--muted);margin:8px 0 4px;padding:3px 8px;background:var(--bg);border-radius:4px;display:inline-block">${item.label}</div>`;
+      if (item.gap)      return `<div style="height:10px;border-top:1px dashed var(--border);margin:6px 0"></div>`;
+      if (item.seats) {
+        const filtered = item.seats.filter(n => n===null||n==='ent'||(n>=sec.min&&n<=sec.max));
+        if (!filtered.some(n=>n!==null)) return '';
+        return `<div style="display:flex;gap:3px;margin-bottom:3px;flex-wrap:nowrap">${filtered.map(adminSeatBtn).join('')}</div>`;
+      }
+      return '';
+    }).join('');
+  } else {
+    const rows=[];
+    for(let i=0;i<allSeats.length;i+=10) rows.push(allSeats.slice(i,i+10));
+    gridHTML=rows.map(row=>`<div style="display:flex;gap:3px;margin-bottom:3px">${row.map(adminSeatBtn).join('')}</div>`).join('');
+  }
+
+  /* 구역 선택 버튼 */
+  const secBtns = ROOM_SECTIONS.map((sc,i)=>`
+    <button data-action="set-seatmap-sec" data-idx="${i}"
+      style="padding:7px 12px;border-radius:var(--r);border:1px solid ${i===secIdx?'var(--primary)':'var(--border)'};
+             background:${i===secIdx?'var(--primary)':'var(--card)'};color:${i===secIdx?'#fff':'var(--text)'};
+             font-size:12px;font-weight:${i===secIdx?'600':'400'};cursor:pointer;white-space:nowrap;font-family:var(--ff)">
+      ${sc.label}
+    </button>`).join('');
+
+  return `
+  <div style="font-size:20px;font-weight:700;margin-bottom:16px">🗺️ 자리표 조회</div>
+
+  <!-- 구역 선택 -->
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px;padding:14px;background:var(--card);
+              border-radius:var(--rl);border:1px solid var(--border)">
+    ${secBtns}
+  </div>
+
+  <!-- 선택된 구역 자리표 -->
+  <div style="background:var(--card);border-radius:var(--rl);border:1px solid var(--border);padding:20px 22px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+      <div>
+        <div style="font-size:17px;font-weight:700">${sec.label}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">총 ${allSeats.length}석</div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:22px;font-weight:800;color:var(--success)">${availCount}</div>
+          <div style="font-size:11px;color:var(--muted)">빈 자리</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:22px;font-weight:800;color:var(--muted)">${occupiedCount}</div>
+          <div style="font-size:11px;color:var(--muted)">배정됨</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:22px;font-weight:800;color:var(--warning)">${pendingCount}</div>
+          <div style="font-size:11px;color:var(--muted)">신청 대기</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 범례 -->
+    <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)">
+        <span style="width:16px;height:16px;background:#dcfce7;border:1px solid #86efac;border-radius:3px;display:inline-block"></span>빈 자리
+      </span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)">
+        <span style="width:16px;height:16px;background:#f0f0f0;border:1px solid #ddd;border-radius:3px;display:inline-block"></span>배정됨
+      </span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)">
+        <span style="width:16px;height:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:3px;display:inline-block"></span>신청 대기
+      </span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)">
+        <span style="font-size:14px">🚪</span>문앞
+      </span>
+    </div>
+
+    <!-- 배치도 -->
+    <div style="overflow:auto;padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)">
+      ${gridHTML}
+    </div>
   </div>`;
 }
 
@@ -1111,9 +1235,12 @@ async function handleClick(e) {
   }
   else if (action==='set-tab') {
     S.adminTab=btn.dataset.tab;
-    if (S.adminTab==='dashboard' && !S.studentsLoaded) loadDashboard();
+    if ((S.adminTab==='dashboard'||S.adminTab==='seatmap') && !S.studentsLoaded) loadDashboard();
     S.showRejectFor=null;
     render();
+  }
+  else if (action==='set-seatmap-sec') {
+    S.adminSeatMapSec=parseInt(btn.dataset.idx); render();
   }
   else if (action==='set-filter') {
     S.filterStatus=btn.dataset.filter; S.showRejectFor=null; render();

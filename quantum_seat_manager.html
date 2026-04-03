@@ -813,7 +813,7 @@ function renderStudent() {
             <strong style="color:var(--text)">신청 내용:</strong>
             ${S.selSection.room} <strong>${S.selSeat}번</strong> 자리로 변경
           </div>
-          <button data-action="submit-req" class="btn-success" ${!S.reason.trim()||S.submitLoading?'disabled':''}>
+          <button data-action="submit-req" class="btn-success" ${S.submitLoading?'disabled':''}>
             ${S.submitLoading?'처리 중...':'신청 제출'}
           </button>`:''}
         </div>`:''}
@@ -1294,7 +1294,8 @@ async function doSearch() {
 
 async function doSubmit() {
   const s=S.foundStudent;
-  if (!s||!S.selSection||!S.selSeat||!S.reason.trim()) return;
+  if (!s||!S.selSection||!S.selSeat) return;
+  if (!S.reason.trim()) { alert('변경 사유를 입력해주세요.'); return; }
   const hasPending = S.myRequests.some(r=>r.studentId===s.id&&r.status==='pending');
   if (hasPending) return;
   S.submitLoading=true; render();

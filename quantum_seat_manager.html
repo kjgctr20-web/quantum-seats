@@ -242,20 +242,45 @@ function subscribeRequests() {
 function parseExcel(buffer) {
   try {
     const wb = XLSX.read(buffer);
-    const ws = wb.Sheets['Master'];
-    if (!ws) return {students:[], error:'Master 시트를 찾을 수 없습니다'};
+    // 첫 번째 시트 사용
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    if (!ws) return {students:[], error:'시트를 찾을 수 없습니다'};
     const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
     const students = [];
-    for (let i=1; i<rows.length; i++) {
+    // 헤더 행 찾기 (학번 컬럼 위치 자동 감지)
+    let headerRow = -1;
+    let colMap = {};
+    for (let i=0; i<Math.min(rows.length, 5); i++) {
       const r = rows[i];
-      if (!r || r[4]==null) continue;
-      const id   = String(r[3]??'').trim();
-      const name = String(r[4]??'').trim();
-      const gender = String(r[5]??'').trim();
-      const room   = String(r[6]??'').trim();
-      const seat   = parseInt(r[7]);
-      if (id && name && room && !isNaN(seat))
-        students.push({id, name, gender, room, seat});
+      if (!r) continue;
+      for (let c=0; c<r.length; c++) {
+        const v = String(r[c]||'').trim();
+        if (v==='학번') colMap.id = c;
+        if (v==='이름') colMap.name = c;
+        if (v==='성별') colMap.gender = c;
+        if (v==='독서실명') colMap.room = c;
+        if (v==='자리번호') colMap.seat = c;
+        if (v==='호') colMap.ho = c;
+      }
+      if (colMap.id !== undefined && colMap.name !== undefined) {
+        headerRow = i; break;
+      }
+    }
+    if (headerRow === -1) return {students:[], error:'헤더 행을 찾을 수 없습니다. (학번, 이름, 성별, 독서실명, 자리번호 컬럼 필요)'};
+    for (let i=headerRow+1; i<rows.length; i++) {
+      const r = rows[i];
+      if (!r) continue;
+      const id     = String(r[colMap.id]??'').trim();
+      const name   = String(r[colMap.name]??'').trim();
+      const gender = String(r[colMap.gender]??'').trim();
+      const roomName = String(r[colMap.room]??'').trim();
+      const ho     = colMap.ho !== undefined ? String(r[colMap.ho]??'').trim() : '';
+      const seat   = parseInt(r[colMap.seat]);
+      if (!id || !name || !roomName || isNaN(seat)) continue;
+      // 독서실명 + 호 조합으로 room 구성
+      const room = ho ? `${roomName} ${ho}호` : roomName;
+      students.push({id, name, gender, room, seat, rowIndex: i, colMap, sheetName});
     }
     return {students, error:null};
   } catch(e) { return {students:[], error:e.message}; }

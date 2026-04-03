@@ -133,12 +133,12 @@ const ROOM_SECTIONS = [
    ================================================ */
 const FLOOR_PLANS = {
   '1관 B1층_여': [
-    {seats:[1,6,9,14,19,24,29,34,39,42,47,52,57,62,67,72,75,80,85,90,95]},
+    {seats:[1,6,9,14,19,24,29,34,39,42,47,52,57,62,67,72,75,80,85,90,95,null]},
     {seats:[2,7,10,15,20,25,30,35,40,43,48,53,58,63,68,73,76,81,86,91,96,100]},
-    {seats:[3,11,16,21,26,31,36,44,49,54,59,64,69,77,82,87,92,97,101]},
-    {seats:[4,12,17,22,27,32,37,45,50,55,60,65,70,78,83,88,93,98,102]},
+    {seats:[3,null,11,16,21,26,31,36,null,44,49,54,59,64,69,null,77,82,87,92,97,101]},
+    {seats:[4,null,12,17,22,27,32,37,null,45,50,55,60,65,70,null,78,83,88,93,98,102]},
     {seats:[5,8,13,18,23,28,33,38,41,46,51,56,61,66,71,74,79,84,89,94,99,103]},
-    {entrance:'🚪 문앞'},
+    {seats:[null,null,null,null,null,null,null,'ent','ent',null,null,null,null,null,null,null,null,null,null,null,null,null]},
     {gap:true},
     {seats:[108,107,106,105,104]},
     {entrance:'🚪 문앞 / 입 구'},
@@ -653,6 +653,8 @@ function renderStudent() {
     const avail = allSeats.filter(n=>!occ.has(n));
 
     function seatBtn(n) {
+      if (n === null) return `<div style="width:36px;height:32px;flex-shrink:0"></div>`;
+      if (n === 'ent') return `<div style="width:36px;height:32px;border-radius:5px;background:#fef3c7;border:1px solid #f59e0b;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0" title="문앞">🚪</div>`;
       const isAvail = !occ.has(n);
       const isSel = n===S.selSeat;
       if(isSel) return `<button data-action="sel-seat" data-seat="${n}" style="width:36px;height:32px;border-radius:5px;background:var(--primary);color:#fff;border:2px solid var(--primary);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff);flex-shrink:0">${n}</button>`;
@@ -669,8 +671,8 @@ function renderStudent() {
         if (item.gap) return `<div style="height:10px;border-top:1px dashed var(--border);margin:6px 0"></div>`;
         if (item.seats) {
           // Only show seats within this section's range
-          const filteredSeats = item.seats.filter(n => n>=sec.min && n<=sec.max);
-          if (!filteredSeats.length) return '';
+          const filteredSeats = item.seats.filter(n => n === null || n === 'ent' || (n>=sec.min && n<=sec.max));
+          if (!filteredSeats.some(n => n !== null)) return '';
           return `<div style="display:flex;gap:3px;margin-bottom:3px;flex-wrap:nowrap">${filteredSeats.map(seatBtn).join('')}</div>`;
         }
         return '';

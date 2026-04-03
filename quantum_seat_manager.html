@@ -278,8 +278,8 @@ function parseExcel(buffer) {
       const ho     = colMap.ho !== undefined ? String(r[colMap.ho]??'').trim() : '';
       const seat   = parseInt(r[colMap.seat]);
       if (!id || !name || !roomName || isNaN(seat)) continue;
-      // 독서실명 + 호 조합으로 room 구성
-      const room = ho ? `${roomName} ${ho}호` : roomName;
+      // 독서실명을 room으로 사용 (호는 자리번호 범위로 구분)
+      const room = roomName;
       students.push({id, name, gender, room, seat, rowIndex: i, colMap, sheetName});
     }
     return {students, error:null};

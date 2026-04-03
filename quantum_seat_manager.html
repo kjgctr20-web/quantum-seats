@@ -868,15 +868,7 @@ function doAdminLogin() {
     if (errEl) errEl.textContent = '비밀번호가 올바르지 않습니다.';
   }
 }
-  if(errEl)errEl.textContent="로그인 중...";
-  try{
-    await auth.signInWithEmailAndPassword(email,pw);
-  }catch(e){
-    console.error("login error:",e.code,e.message);
-    const msg={"auth/invalid-credential":"이메일 또는 비밀번호가 올바르지 않습니다.","auth/wrong-password":"비밀번호가 올바르지 않습니다.","auth/user-not-found":"존재하지 않는 이메일입니다.","auth/too-many-requests":"로그인 시도 초과. 잠시 후 다시 시도해주세요.","auth/invalid-email":"올바른 이메일 형식이 아닙니다."};
-    if(errEl)errEl.textContent=msg[e.code]||("오류: "+e.code);
-  }
-}
+
 
 async function loadDashboard() {
   S.dashLoading=true; render();

@@ -142,10 +142,13 @@ const FLOOR_PLANS = {
     {gap:true},
     {seats:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,'ent',108,107,null,106,105,null,104]},
     {seats:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,'ent',113,112,null,111,110,null,109]},
+    {gap:true},
     {seats:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,118,117,null,116,115,114]},
     {seats:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,123,122,null,121,120,119]},
+    {gap:true},
     {seats:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,128,127,null,126,125,124]},
     {seats:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,133,132,null,131,130,129]},
+    {gap:true},
     {seats:[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,138,137,null,136,135,134]},
   ],
   '1관 5층_남': [
@@ -999,11 +1002,9 @@ function renderDashboard() {
   const approved = S.requests.filter(r=>r.status==='approved').length;
   const rejected = S.requests.filter(r=>r.status==='rejected').length;
 
-  // 성별 필터 적용
   const gf = S.dashGenderFilter;
   const stats = gf==='전체' ? allStats : allStats.filter(s=>s.gender===gf);
 
-  // 요약 수치 (필터 기준)
   const maleStudents   = S.students.filter(st=>st.gender==='남').length;
   const femaleStudents = S.students.filter(st=>st.gender==='여').length;
   const shownStudents  = gf==='전체' ? S.students.length

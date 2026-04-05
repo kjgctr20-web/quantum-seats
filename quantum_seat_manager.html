@@ -408,6 +408,7 @@ let S = {
   adminTab: 'dashboard',
   adminSeatMapSec: 0,
   filterStatus: 'pending',
+  dashGenderFilter: '전체',
   showRejectFor: null,
   rejectTexts: {},
   uploadMsg: '',
@@ -993,49 +994,90 @@ function renderSeatMap() {
 
 function renderDashboard() {
   if (S.dashLoading) return `<div class="loading"><div class="spinner"></div>학생 데이터 로딩 중...</div>`;
-  const stats   = getRoomStats();
-  const pending = S.requests.filter(r=>r.status==='pending').length;
-  const approved= S.requests.filter(r=>r.status==='approved').length;
-  const rejected= S.requests.filter(r=>r.status==='rejected').length;
+  const allStats = getRoomStats();
+  const pending  = S.requests.filter(r=>r.status==='pending').length;
+  const approved = S.requests.filter(r=>r.status==='approved').length;
+  const rejected = S.requests.filter(r=>r.status==='rejected').length;
+
+  // 성별 필터 적용
+  const gf = S.dashGenderFilter;
+  const stats = gf==='전체' ? allStats : allStats.filter(s=>s.gender===gf);
+
+  // 요약 수치 (필터 기준)
+  const maleStudents   = S.students.filter(st=>st.gender==='남').length;
+  const femaleStudents = S.students.filter(st=>st.gender==='여').length;
+  const shownStudents  = gf==='전체' ? S.students.length
+                       : gf==='남'   ? maleStudents : femaleStudents;
+
+  const genderBtns = ['전체','남','여'].map(g => {
+    const active = gf===g;
+    const col = g==='남'?'#1e40af': g==='여'?'#9d174d':'var(--navy)';
+    return `<button data-action="set-dash-gender" data-gender="${g}"
+      style="padding:6px 18px;border-radius:20px;border:1.5px solid ${active?col:'var(--border)'};
+             background:${active?col:'var(--card)'};color:${active?'#fff':'var(--muted)'};
+             font-size:13px;font-weight:600;cursor:pointer;font-family:var(--ff);transition:all .15s">
+      ${g==='남'?'👨 남학생':g==='여'?'👩 여학생':'전체'}
+    </button>`;
+  }).join('');
+
   return `
-  <div style="font-size:20px;font-weight:700;margin-bottom:22px">좌석 현황</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:22px">
+    <div style="font-size:20px;font-weight:700">좌석 현황</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:12px;color:var(--muted);margin-right:4px">성별 필터</span>
+      ${genderBtns}
+    </div>
+  </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px">
     ${[
-      {label:'전체 학생', val:S.students.length, color:'var(--primary)'},
-      {label:'대기 신청',  val:pending,           color:'var(--warning)'},
-      {label:'승인됨',    val:approved,          color:'var(--success)'},
-      {label:'반려됨',    val:rejected,          color:'var(--danger)'},
+      {label: gf==='전체'?'전체 학생': gf==='남'?'남학생':'여학생',
+       val: shownStudents,
+       sub: gf==='전체'?`남 ${maleStudents} / 여 ${femaleStudents}`:'',
+       color:'var(--primary)'},
+      {label:'대기 신청', val:pending,  color:'var(--warning)'},
+      {label:'승인됨',   val:approved, color:'var(--success)'},
+      {label:'반려됨',   val:rejected, color:'var(--danger)'},
     ].map(c=>`
     <div style="background:var(--card);border-radius:var(--rl);padding:18px 20px;
                 border:1px solid var(--border);border-left:3px solid ${c.color}">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${c.label}</div>
       <div style="font-size:26px;font-weight:800;color:${c.color}">${c.val}</div>
+      ${c.sub?`<div style="font-size:11px;color:var(--hint);margin-top:4px">${c.sub}</div>`:''}
     </div>`).join('')}
   </div>
   <div style="background:var(--card);border-radius:var(--rl);border:1px solid var(--border);overflow:hidden">
-    <div style="padding:16px 22px;border-bottom:1px solid var(--border);font-size:15px;font-weight:700">독서실별 현황</div>
+    <div style="padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span style="font-size:15px;font-weight:700">독서실별 현황</span>
+      ${gf!=='전체'?`<span style="font-size:12px;padding:3px 12px;border-radius:12px;
+        background:${gf==='남'?'#dbeafe':'#fce7f3'};
+        color:${gf==='남'?'#1e40af':'#9d174d'};font-weight:600">
+        ${gf==='남'?'👨 남학생':'👩 여학생'} 구역만 표시
+      </span>`:''}
+    </div>
     <div style="overflow-x:auto">
       <table>
         <thead><tr>${['독서실','성별','총 좌석','배정','빈 자리','대기 신청','점유율'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
         <tbody>
-          ${stats.map(s=>{
-            const rate=Math.round((s.occupied/s.total)*100);
-            const barC=rate>90?'#b91c1c':rate>70?'#d97706':'var(--primary)';
-            return `<tr>
-              <td style="font-weight:500">${s.label}</td>
-              <td><span class="${s.gender==='여'?'tag-f':'tag-m'}">${s.gender}</span></td>
-              <td style="color:var(--muted)">${s.total}</td>
-              <td>${s.occupied}</td>
-              <td style="font-weight:600;color:var(--success)">${s.available}</td>
-              <td style="color:${s.pending>0?'var(--warning)':'var(--hint)'}">${s.pending>0?s.pending+'건':'-'}</td>
-              <td style="min-width:110px">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${rate}%;background:${barC}"></div></div>
-                  <span style="font-size:12px;color:var(--muted);min-width:32px">${rate}%</span>
-                </div>
-              </td>
-            </tr>`;
-          }).join('')}
+          ${stats.length===0
+            ?`<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--hint)">해당 성별 구역이 없습니다.</td></tr>`
+            :stats.map(s=>{
+              const rate=Math.round((s.occupied/s.total)*100);
+              const barC=rate>90?'#b91c1c':rate>70?'#d97706':'var(--primary)';
+              return `<tr>
+                <td style="font-weight:500">${s.label}</td>
+                <td><span class="${s.gender==='여'?'tag-f':'tag-m'}">${s.gender}</span></td>
+                <td style="color:var(--muted)">${s.total}</td>
+                <td>${s.occupied}</td>
+                <td style="font-weight:600;color:var(--success)">${s.available}</td>
+                <td style="color:${s.pending>0?'var(--warning)':'var(--hint)'}">${s.pending>0?s.pending+'건':'-'}</td>
+                <td style="min-width:110px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${rate}%;background:${barC}"></div></div>
+                    <span style="font-size:12px;color:var(--muted);min-width:32px">${rate}%</span>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
         </tbody>
       </table>
     </div>
@@ -1244,6 +1286,9 @@ async function handleClick(e) {
   }
   else if (action==='set-filter') {
     S.filterStatus=btn.dataset.filter; S.showRejectFor=null; render();
+  }
+  else if (action==='set-dash-gender') {
+    S.dashGenderFilter=btn.dataset.gender; render();
   }
   else if (action==='approve') {
     const id=btn.dataset.id;

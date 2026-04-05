@@ -676,7 +676,7 @@ function renderStudent() {
           // Only show seats within this section's range
           const filteredSeats = item.seats.filter(n => n === null || n === 'ent' || (n>=sec.min && n<=sec.max));
           if (!filteredSeats.some(n => n !== null)) return '';
-          return `<div style="display:flex;gap:3px;margin-bottom:3px;flex-wrap:nowrap;${item.align==='right'?'justify-content:flex-end':''}">${filteredSeats.map(seatBtn).join('')}</div>`;
+          return `<div style="display:flex;gap:3px;margin-bottom:3px;flex-wrap:nowrap;width:100%;${item.align==='right'?'justify-content:flex-end':''}">${filteredSeats.map(seatBtn).join('')}</div>`;
         }
         return '';
       }).join('');
@@ -701,7 +701,7 @@ function renderStudent() {
         <span style="background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:2px 8px;font-size:11px;color:#92400e">🚪 입구 위치 표시</span>
       </div>
       <div style="overflow:auto;max-height:380px;padding:14px;border:1px solid var(--border);border-radius:var(--rl);background:var(--bg);min-width:0">
-        ${gridHTML}
+        <div style="display:flex;flex-direction:column;min-width:max-content">${gridHTML}</div>
       </div>
     </div>`;
   }
@@ -920,7 +920,7 @@ function renderSeatMap() {
       if (item.seats) {
         const filtered = item.seats.filter(n => n===null||n==='ent'||(n>=sec.min&&n<=sec.max));
         if (!filtered.some(n=>n!==null)) return '';
-        return `<div style="display:flex;gap:3px;margin-bottom:3px;flex-wrap:nowrap;${item.align==='right'?'justify-content:flex-end':''}">${filtered.map(adminSeatBtn).join('')}</div>`;
+        return `<div style="display:flex;gap:3px;margin-bottom:3px;flex-wrap:nowrap;width:100%;${item.align==='right'?'justify-content:flex-end':''}">${filtered.map(adminSeatBtn).join('')}</div>`;
       }
       return '';
     }).join('');
@@ -989,7 +989,7 @@ function renderSeatMap() {
 
     <!-- 배치도 -->
     <div style="overflow:auto;padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)">
-      ${gridHTML}
+      <div style="display:flex;flex-direction:column;min-width:max-content">${gridHTML}</div>
     </div>
   </div>`;
 }

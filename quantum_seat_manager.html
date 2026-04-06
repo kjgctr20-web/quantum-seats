@@ -416,6 +416,17 @@ let S = {
   uploadLoading: false,
   actionLoading: {},
   dashLoading: false,
+  // 학생 관리 탭
+  smSearch: '',
+  smGender: '전체',
+  smClass: '전체',
+  smPage: 1,
+  smSelected: null,       // 선택된 학생 id
+  smAssignSec: null,      // 선택된 구역 인덱스
+  smAssignSeat: null,     // 선택된 좌석
+  smAssignLoading: false,
+  smAssignMsg: '',
+  smAssignErr: '',
 };
 
 /* ================================================
@@ -463,6 +474,10 @@ async function rejectRequestFB(reqId, reason) {
     status: 'rejected',
     rejectReason: reason || '',
   });
+}
+
+async function adminAssignSeatFB(studentId, room, seat) {
+  await db.collection('students').doc(studentId).update({ room, seat });
 }
 
 async function loadRoomStudentsFB(room) {
@@ -526,6 +541,7 @@ function parseExcel(buffer) {
         if (v==='독서실명') colMap.room = c;
         if (v==='자리번호') colMap.seat = c;
         if (v==='호') colMap.ho = c;
+        if (v==='반'||v==='학급'||v==='클래스') colMap.class = c;
       }
       if (colMap.id !== undefined && colMap.name !== undefined) {
         headerRow = i; break;
@@ -541,10 +557,11 @@ function parseExcel(buffer) {
       const roomName = String(r[colMap.room]??'').trim();
       const ho     = colMap.ho !== undefined ? String(r[colMap.ho]??'').trim() : '';
       const seat   = parseInt(r[colMap.seat]);
+      const cls    = colMap.class !== undefined ? String(r[colMap.class]??'').trim() : '';
       if (!id || !name || !roomName || isNaN(seat)) continue;
       // 독서실명을 room으로 사용 (호는 자리번호 범위로 구분)
       const room = roomName;
-      students.push({id, name, gender, room, seat, rowIndex: i, colMap, sheetName});
+      students.push({id, name, gender, room, seat, class: cls, rowIndex: i, colMap, sheetName});
     }
     return {students, error:null};
   } catch(e) { return {students:[], error:e.message}; }
@@ -841,11 +858,12 @@ function renderAdmin() {
   </div>`;
 
   const pending = S.requests.filter(r=>r.status==='pending').length;
-  const tabs = [['dashboard','📊 현황'],['requests',`📋 신청 관리${pending>0?` (${pending})`:''}`],['seatmap','🗺️ 자리표'],['files','📁 파일 관리']];
+  const tabs = [['dashboard','📊 현황'],['requests',`📋 신청 관리${pending>0?` (${pending})`:''}`],['seatmap','🗺️ 자리표'],['students','👥 학생 관리'],['files','📁 파일 관리']];
   let content = '';
   if      (S.adminTab==='dashboard') content = renderDashboard();
   else if (S.adminTab==='requests')  content = renderRequests();
   else if (S.adminTab==='seatmap')   content = renderSeatMap();
+  else if (S.adminTab==='students')  content = renderStudentManager();
   else                                content = renderFiles();
 
   return `
@@ -992,7 +1010,261 @@ function renderSeatMap() {
   </div>`;
 }
 
-function renderDashboard() {
+function renderStudentManager() {
+  if (S.dashLoading) return `<div class="loading"><div class="spinner"></div>학생 데이터 로딩 중...</div>`;
+  if (!S.studentsLoaded) return `<div class="loading"><div class="spinner"></div>데이터를 불러오는 중...</div>`;
+
+  const PAGE_SIZE = 20;
+  const q = S.smSearch.trim().toLowerCase();
+
+  // 고유 반 목록 (정렬)
+  const classes = ['전체', ...Array.from(new Set(S.students.map(s => s.class||'').filter(Boolean))).sort()];
+
+  // 필터링
+  let list = S.students.filter(st => {
+    if (S.smGender !== '전체' && st.gender !== S.smGender) return false;
+    if (S.smClass  !== '전체' && (st.class||'') !== S.smClass) return false;
+    if (q && !st.name.toLowerCase().includes(q) && !st.id.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  list = [...list].sort((a,b) => a.id.localeCompare(b.id, 'ko'));
+
+  const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  const page = Math.min(S.smPage, totalPages);
+  const paged = list.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+
+  // 선택된 학생 처리
+  const sel = S.smSelected ? S.students.find(s => s.id === S.smSelected) : null;
+
+  // 자리배정 구역 (선택된 학생 성별 기준)
+  const assignSections = sel ? ROOM_SECTIONS.filter(s => s.gender === sel.gender) : [];
+
+  // 자리배정 좌석 그리드
+  let assignGrid = '';
+  if (sel && S.smAssignSec !== null) {
+    const sec = ROOM_SECTIONS[S.smAssignSec];
+    const occ = new Set();
+    S.students.filter(st => st.room===sec.room && st.seat>=sec.min && st.seat<=sec.max && st.id!==sel.id).forEach(st => occ.add(st.seat));
+
+    function assignSeatBtn(n) {
+      if (n === null) return `<div style="width:34px;height:30px;flex-shrink:0"></div>`;
+      if (n === 'ent') return `<div style="width:34px;height:30px;border-radius:5px;background:#fef3c7;border:1px solid #f59e0b;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">🚪</div>`;
+      const isCur  = sel.room===sec.room && sel.seat===n;
+      const isSel  = S.smAssignSeat===n;
+      const isOcc  = occ.has(n);
+      if (isCur) return `<div style="width:34px;height:30px;border-radius:5px;background:#dbeafe;color:#1e40af;border:2px solid #1e40af;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="현재 자리">${n}</div>`;
+      if (isSel) return `<button data-action="sm-sel-seat" data-seat="${n}" style="width:34px;height:30px;border-radius:5px;background:var(--primary);color:#fff;border:2px solid var(--primary);font-size:10px;font-weight:700;cursor:pointer;font-family:var(--ff);flex-shrink:0">${n}</button>`;
+      if (isOcc) return `<div style="width:34px;height:30px;border-radius:5px;background:#f0f0f0;color:#ccc;border:1px solid #e0e0e0;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${n}</div>`;
+      return `<button data-action="sm-sel-seat" data-seat="${n}" style="width:34px;height:30px;border-radius:5px;background:#dcfce7;color:#15803d;border:1px solid #86efac;font-size:10px;font-weight:500;cursor:pointer;font-family:var(--ff);flex-shrink:0">${n}</button>`;
+    }
+
+    const plan = getFloorPlan(sec.room, sec.gender);
+    let gridHTML = '';
+    if (plan) {
+      gridHTML = plan.map(item => {
+        if (item.label) return `<div style="font-size:11px;font-weight:600;color:var(--muted);margin:6px 0 3px;padding:3px 8px;background:var(--bg);border-radius:4px;display:inline-block">${item.label}</div>`;
+        if (item.gap)   return `<div style="height:8px;border-top:1px dashed var(--border);margin:4px 0"></div>`;
+        if (item.seats) {
+          const filtered = item.seats.filter(n => n===null||n==='ent'||(n>=sec.min&&n<=sec.max));
+          if (!filtered.some(n=>n!==null&&n!=='ent')) return '';
+          return `<div style="display:flex;gap:3px;margin-bottom:3px;flex-wrap:nowrap;${item.align==='right'?'justify-content:flex-end':''}">${filtered.map(assignSeatBtn).join('')}</div>`;
+        }
+        return '';
+      }).join('');
+    } else {
+      const all = Array.from({length:sec.max-sec.min+1},(_,i)=>sec.min+i);
+      const rows=[]; for(let i=0;i<all.length;i+=10) rows.push(all.slice(i,i+10));
+      gridHTML = rows.map(row=>`<div style="display:flex;gap:3px;margin-bottom:3px">${row.map(assignSeatBtn).join('')}</div>`).join('');
+    }
+    assignGrid = `
+    <div style="margin-top:14px">
+      <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:8px">좌석 선택 <span style="color:var(--hint)">(🟦 현재 자리 / 🟩 빈 자리)</span></div>
+      <div style="overflow:auto;max-height:320px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)">
+        <div style="display:flex;flex-direction:column;min-width:max-content">${gridHTML}</div>
+      </div>
+    </div>`;
+  }
+
+  // 학생 배정 패널 HTML
+  const assignPanel = sel ? `
+  <div style="background:#f8fafc;border:1.5px solid var(--primary);border-radius:var(--rl);padding:20px 22px;margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+            <span style="font-size:18px;font-weight:700">${sel.name}</span>
+            <span class="${sel.gender==='여'?'tag-f':'tag-m'}">${sel.gender}</span>
+            ${sel.class?`<span style="font-size:12px;color:var(--muted);background:#e2e8f0;padding:1px 8px;border-radius:4px">${sel.class}반</span>`:''}
+          </div>
+          <div style="font-size:13px;color:var(--muted)">학번 ${sel.id}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="text-align:center;padding:10px 16px;background:var(--card);border-radius:var(--r);border:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--hint);margin-bottom:3px">현재 자리</div>
+          <div style="font-size:15px;font-weight:700;color:var(--primary)">${sel.room}</div>
+          <div style="font-size:24px;font-weight:800;line-height:1.2">${sel.seat}번</div>
+        </div>
+        <button data-action="sm-close" style="background:none;border:1px solid var(--border);border-radius:var(--r);padding:6px 12px;cursor:pointer;font-size:13px;color:var(--muted);font-family:var(--ff)">✕ 닫기</button>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px">📌 자리 직접 배정</div>
+
+      <!-- 구역 선택 -->
+      <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:8px">독서실 구역 선택 (${sel.gender}학생 가능 구역)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+        ${assignSections.map((sec,_) => {
+          const idx = ROOM_SECTIONS.indexOf(sec);
+          const active = S.smAssignSec===idx;
+          return `<button data-action="sm-sel-sec" data-idx="${idx}"
+            style="padding:6px 12px;border-radius:var(--r);border:1px solid ${active?'var(--primary)':'var(--border)'};
+                   background:${active?'#dbeafe':'var(--card)'};color:${active?'var(--primary)':'var(--muted)'};
+                   font-size:12px;font-weight:500;cursor:pointer;font-family:var(--ff);white-space:nowrap">
+            ${sec.label}
+          </button>`;
+        }).join('')}
+      </div>
+
+      ${assignGrid}
+
+      ${S.smAssignSeat ? `
+      <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:10px 16px;font-size:13px;color:var(--muted)">
+          <strong style="color:var(--text)">${ROOM_SECTIONS[S.smAssignSec].room}</strong> <strong style="color:var(--primary);font-size:16px">${S.smAssignSeat}번</strong>으로 배정
+        </div>
+        <button data-action="sm-confirm-assign" class="btn-success" ${S.smAssignLoading?'disabled':''} style="padding:10px 22px">
+          ${S.smAssignLoading?'처리 중...':'✓ 배정 확정'}
+        </button>
+      </div>` : ''}
+
+      ${S.smAssignMsg ? `<div class="alert alert-ok" style="margin-top:12px">${S.smAssignMsg}</div>` : ''}
+      ${S.smAssignErr ? `<div class="alert alert-err" style="margin-top:12px">${S.smAssignErr}</div>` : ''}
+    </div>
+  </div>` : '';
+
+  // 통계
+  const maleCount = list.filter(s=>s.gender==='남').length;
+  const femaleCount = list.filter(s=>s.gender==='여').length;
+
+  // 반 필터 버튼
+  const classFilters = classes.map(c => {
+    const active = S.smClass===c;
+    return `<button data-action="sm-filter-class" data-class="${c}"
+      style="padding:5px 14px;border-radius:20px;border:1px solid ${active?'var(--primary)':'var(--border)'};
+             background:${active?'#dbeafe':'var(--card)'};color:${active?'var(--primary)':'var(--muted)'};
+             font-size:13px;font-weight:500;cursor:pointer;font-family:var(--ff)">
+      ${c==='전체'?'전체':c+'반'}
+    </button>`;
+  }).join('');
+
+  // 성별 필터
+  const genderFilters = ['전체','남','여'].map(g => {
+    const active = S.smGender===g;
+    const col = g==='남'?'#1e40af':g==='여'?'#9d174d':'var(--navy)';
+    return `<button data-action="sm-filter-gender" data-gender="${g}"
+      style="padding:6px 18px;border-radius:20px;border:1.5px solid ${active?col:'var(--border)'};
+             background:${active?col:'var(--card)'};color:${active?'#fff':'var(--muted)'};
+             font-size:13px;font-weight:600;cursor:pointer;font-family:var(--ff)">
+      ${g==='남'?'👨 남':g==='여'?'👩 여':'전체'}
+    </button>`;
+  }).join('');
+
+  // 페이지네이션
+  const pageNums = [];
+  for (let i=Math.max(1,page-2); i<=Math.min(totalPages,page+2); i++) pageNums.push(i);
+  const pagination = totalPages>1 ? `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:18px 0">
+    <button data-action="sm-page" data-p="1" ${page===1?'disabled':''} style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);background:var(--card);cursor:pointer;font-family:var(--ff);color:var(--muted);font-size:13px" ${page===1?'style="opacity:.4"':''}>«</button>
+    <button data-action="sm-page" data-p="${page-1}" ${page===1?'disabled':''} style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--r);background:var(--card);cursor:pointer;font-family:var(--ff);color:var(--muted);font-size:13px">‹</button>
+    ${pageNums.map(n=>`<button data-action="sm-page" data-p="${n}" style="padding:6px 12px;border-radius:var(--r);border:1px solid ${n===page?'var(--primary)':'var(--border)'};background:${n===page?'var(--primary)':'var(--card)'};color:${n===page?'#fff':'var(--muted)'};cursor:pointer;font-family:var(--ff);font-size:13px;font-weight:${n===page?'700':'400'}">${n}</button>`).join('')}
+    <button data-action="sm-page" data-p="${page+1}" ${page===totalPages?'disabled':''} style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--r);background:var(--card);cursor:pointer;font-family:var(--ff);color:var(--muted);font-size:13px">›</button>
+    <button data-action="sm-page" data-p="${totalPages}" ${page===totalPages?'disabled':''} style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);background:var(--card);cursor:pointer;font-family:var(--ff);color:var(--muted);font-size:13px">»</button>
+    <span style="font-size:12px;color:var(--hint);margin-left:4px">${page} / ${totalPages}쪽</span>
+  </div>` : '';
+
+  // 학생 테이블
+  const tableRows = paged.length === 0
+    ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--hint)">검색 결과가 없습니다</td></tr>`
+    : paged.map(st => {
+        const isSel = S.smSelected === st.id;
+        return `<tr style="cursor:pointer;transition:background .1s;${isSel?'background:#eff6ff;':''}">
+          <td style="font-size:13px;font-weight:500;text-align:center">${st.class||'-'}</td>
+          <td style="font-size:13px;color:var(--muted)">${st.id}</td>
+          <td style="font-size:14px;font-weight:600">${st.name}</td>
+          <td style="text-align:center"><span class="${st.gender==='여'?'tag-f':'tag-m'}">${st.gender}</span></td>
+          <td style="font-size:13px;color:var(--muted)">${st.room}</td>
+          <td style="font-size:14px;font-weight:600;color:var(--primary);text-align:center">${st.seat}번</td>
+          <td style="text-align:center">
+            <button data-action="sm-select" data-id="${st.id}"
+              style="padding:5px 14px;border-radius:var(--r);border:1px solid ${isSel?'var(--primary)':'var(--border)'};
+                     background:${isSel?'#dbeafe':'var(--card)'};color:${isSel?'var(--primary)':'var(--muted)'};
+                     font-size:12px;font-weight:500;cursor:pointer;font-family:var(--ff);white-space:nowrap">
+              ${isSel?'✓ 선택중':'자리 변경'}
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+
+  return `
+  <div style="font-size:20px;font-weight:700;margin-bottom:20px">👥 학생 관리</div>
+
+  ${assignPanel}
+
+  <!-- 검색 & 필터 -->
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:18px 22px;margin-bottom:18px">
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <input id="sm-search-input" placeholder="🔍 이름 또는 학번으로 검색" value="${S.smSearch}"
+        style="max-width:320px;flex:1" />
+      ${S.smSearch?`<button data-action="sm-clear-search" style="padding:9px 14px;border-radius:var(--r);border:1px solid var(--border);background:var(--card);cursor:pointer;font-size:13px;color:var(--muted);font-family:var(--ff)">✕ 초기화</button>`:''}
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap">성별</span>
+      <div style="display:flex;gap:6px">${genderFilters}</div>
+    </div>
+    ${classes.length > 1 ? `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap">반</span>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${classFilters}</div>
+    </div>` : ''}
+  </div>
+
+  <!-- 집계 -->
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+    <div style="font-size:13px;color:var(--muted)">
+      검색 결과 <strong style="color:var(--text)">${list.length}</strong>명
+      <span style="margin:0 6px;color:var(--border)">|</span>
+      <span style="color:#1e40af">👨 남 ${maleCount}</span>
+      <span style="margin:0 6px;color:var(--border)">|</span>
+      <span style="color:#9d174d">👩 여 ${femaleCount}</span>
+    </div>
+    <div style="font-size:12px;color:var(--hint)">페이지당 ${PAGE_SIZE}명</div>
+  </div>
+
+  <!-- 학생 테이블 -->
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden">
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:center;min-width:50px">반</th>
+            <th style="min-width:100px">학번</th>
+            <th style="min-width:80px">이름</th>
+            <th style="text-align:center;min-width:50px">성별</th>
+            <th style="min-width:120px">현재 독서실</th>
+            <th style="text-align:center;min-width:70px">좌석</th>
+            <th style="text-align:center;min-width:90px">관리</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    ${pagination}
+  </div>`;
+}
+
+
   if (S.dashLoading) return `<div class="loading"><div class="spinner"></div>학생 데이터 로딩 중...</div>`;
   const allStats = getRoomStats();
   const pending  = S.requests.filter(r=>r.status==='pending').length;
@@ -1207,6 +1479,12 @@ function bindEvents() {
   if (ae) ae.addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('admin-pw')?.focus(); });
   const ap = document.getElementById('admin-pw');
   if (ap) ap.addEventListener('keydown', e=>{ if(e.key==='Enter') doAdminLogin(); });
+  // 학생관리 검색
+  const smi = document.getElementById('sm-search-input');
+  if (smi) {
+    smi.addEventListener('input', e=>{ S.smSearch=e.target.value; S.smPage=1; render(); });
+    smi.addEventListener('keydown', e=>{ if(e.key==='Escape'){S.smSearch='';S.smPage=1;render();} });
+  }
   // 반려 사유 input
   document.querySelectorAll('[id^="rr-"]').forEach(el => {
     const id = el.id.replace('rr-','');
@@ -1275,7 +1553,7 @@ async function handleClick(e) {
   }
   else if (action==='set-tab') {
     S.adminTab=btn.dataset.tab;
-    if ((S.adminTab==='dashboard'||S.adminTab==='seatmap') && !S.studentsLoaded) loadDashboard();
+    if ((S.adminTab==='dashboard'||S.adminTab==='seatmap'||S.adminTab==='students') && !S.studentsLoaded) loadDashboard();
     S.showRejectFor=null;
     render();
   }
@@ -1315,6 +1593,54 @@ async function handleClick(e) {
     try { await rejectRequestFB(id, S.rejectTexts[id]||''); S.showRejectFor=null; }
     catch(e){ alert('오류: '+e.message); }
     finally { S.actionLoading[id]=false; }
+  }
+  else if (action==='sm-filter-gender') {
+    S.smGender=btn.dataset.gender; S.smPage=1; S.smSelected=null; S.smAssignSec=null; S.smAssignSeat=null; S.smAssignMsg=''; S.smAssignErr=''; render();
+  }
+  else if (action==='sm-filter-class') {
+    S.smClass=btn.dataset.class; S.smPage=1; S.smSelected=null; S.smAssignSec=null; S.smAssignSeat=null; S.smAssignMsg=''; S.smAssignErr=''; render();
+  }
+  else if (action==='sm-page') {
+    const p=parseInt(btn.dataset.p);
+    if (!isNaN(p) && p>=1) { S.smPage=p; render(); }
+  }
+  else if (action==='sm-clear-search') {
+    S.smSearch=''; S.smPage=1; render();
+  }
+  else if (action==='sm-select') {
+    const id=btn.dataset.id;
+    if (S.smSelected===id) {
+      S.smSelected=null; S.smAssignSec=null; S.smAssignSeat=null; S.smAssignMsg=''; S.smAssignErr='';
+    } else {
+      S.smSelected=id; S.smAssignSec=null; S.smAssignSeat=null; S.smAssignMsg=''; S.smAssignErr='';
+      // 페이지 상단 스크롤
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+    render();
+  }
+  else if (action==='sm-close') {
+    S.smSelected=null; S.smAssignSec=null; S.smAssignSeat=null; S.smAssignMsg=''; S.smAssignErr=''; render();
+  }
+  else if (action==='sm-sel-sec') {
+    S.smAssignSec=parseInt(btn.dataset.idx); S.smAssignSeat=null; render();
+  }
+  else if (action==='sm-sel-seat') {
+    S.smAssignSeat=parseInt(btn.dataset.seat); render();
+  }
+  else if (action==='sm-confirm-assign') {
+    const sel = S.students.find(s=>s.id===S.smSelected);
+    if (!sel||S.smAssignSec===null||!S.smAssignSeat) return;
+    const sec = ROOM_SECTIONS[S.smAssignSec];
+    if (!confirm(`${sel.name} 학생을 "${sec.room} ${S.smAssignSeat}번"으로 배정하시겠습니까?`)) return;
+    S.smAssignLoading=true; S.smAssignMsg=''; S.smAssignErr=''; render();
+    try {
+      await adminAssignSeatFB(sel.id, sec.room, S.smAssignSeat);
+      const idx=S.students.findIndex(s=>s.id===sel.id);
+      if (idx>=0) S.students[idx]={...S.students[idx], room:sec.room, seat:S.smAssignSeat};
+      S.smAssignMsg=`✅ ${sel.name} → ${sec.room} ${S.smAssignSeat}번 배정 완료`;
+      S.smAssignSeat=null; S.smAssignSec=null;
+    } catch(e){ S.smAssignErr='배정 실패: '+e.message; }
+    finally { S.smAssignLoading=false; render(); }
   }
   else if (action==='trigger-upload') {
     document.getElementById('file-input').click();

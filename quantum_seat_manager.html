@@ -1264,7 +1264,7 @@ function renderStudentManager() {
   </div>`;
 }
 
-
+function renderDashboard() {
   if (S.dashLoading) return `<div class="loading"><div class="spinner"></div>학생 데이터 로딩 중...</div>`;
   const allStats = getRoomStats();
   const pending  = S.requests.filter(r=>r.status==='pending').length;
